@@ -1,0 +1,5 @@
+##  Pair style 
+pair_style          hybrid/overlay coul/CTIP 8.5 wolf 0.25 eam/alloy	
+pair_coeff          * * eam/alloy HfNbZrTiTaO.eam.alloy        Hf Nb Zr Ti Ta O  
+pair_coeff          * * coul/CTIP HfNbZrTiTaO.ctip                   Hf Nb Zr Ti Ta O 
+fix                      qeq all qeq/CTIP 1 8.5 1.0e-6 1000 coul/CTIP alpha 0.25
