@@ -1,0 +1,282 @@
+units           metal
+boundary        p p f
+atom_style      charge
+atom_modify     map array sort 5000 2
+
+
+
+
+
+
+
+
+
+
+
+##  ---------------------  Settings  ------------------  ##
+variable        Temperature   equal 300
+variable        Pressure      equal 1.0
+variable        Strain        equal 0
+
+# Composition 
+variable        f_Nb equal 0.20
+variable        f_Zr equal 0.25
+variable        f_Ti equal 0.333333
+variable        f_Ta equal 0.5  
+
+# vacumm spacing 
+variable        VacHigh    equal 95
+variable        VacLow     equal 65
+variable        VacHi      equal ${VacHigh}-0.5
+variable        VacLo      equal ${VacLow}+0.5
+variable        AddBound   equal ${VacLo}+10
+
+
+
+
+
+
+
+
+
+
+##  ----------------------  Create Atoms  ----------------------  ##
+##  Create box and atoms
+lattice         bcc 3.5
+region          box block 0 52.5 0 52.5 -3   ${VacHigh} units box 
+create_box      6 box 
+region          fill block 0 52.49 0 52.49 0 ${VacLow} units box 
+create_atoms    1 region fill 
+
+##  Change elements to create alloys
+set             type 1 type/fraction 2 ${f_Nb} 146438
+set             type 1 type/fraction 3 ${f_Zr} 1236
+set             type 1 type/fraction 4 ${f_Ti} 4995
+set             type 1 type/fraction 5 ${f_Ta} 5848
+##  Set atomic groups 
+group           1 type 1             ## group 1 -- Hf
+group           2 type 2             ## group 2 -- Nb
+group           3 type 3             ## group 3 -- Zr
+group           4 type 4             ## group 4 -- Ti
+group           5 type 5             ## group 5 -- Ta
+group           6 type 6             ## group 6 -- O
+
+
+
+
+
+
+
+
+
+
+
+##  ----------------------  Pair Styles and Minimization  --------------------------  ##
+## EAM potential coeff
+pair_style  	eam/alloy
+pair_coeff   	* * HfNbZrTiTaO.eam.alloy Hf Nb Zr Ti Ta O 
+
+
+##  Charge calc
+compute   	    charge1 1 property/atom q
+compute         charge2 2 property/atom q
+compute         charge3 3 property/atom q
+compute   	   	charge4 4 property/atom q
+compute   	  	charge5 5 property/atom q
+compute   	  	charge6 6 property/atom q
+
+compute   	  	q1 1 reduce ave c_charge1
+compute         q2 2 reduce ave c_charge2
+compute         q3 3 reduce ave c_charge3
+compute   	  	q4 4 reduce ave c_charge4
+compute   	  	q5 5 reduce ave c_charge5
+compute         q6 6 reduce ave c_charge6
+
+variable        Q1 equal c_q1
+variable        Q2 equal c_q2
+variable        Q3 equal c_q3
+variable        Q4 equal c_q4
+variable        Q5 equal c_q5
+variable        Q6 equal c_q6
+
+variable   	    qsum equal count(1)*c_q1+count(2)*c_q2+count(3)*c_q3+count(4)*c_q4+count(5)*c_q5+count(6)*c_q6
+variable        Step equal step 
+fix             output_q all print 500 "${Step} ${Q1} ${Q2} ${Q3} ${Q4} ${Q5} ${Q6}" file tmp.q
+
+##  Neighbor list build
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+thermo          1
+thermo_style    custom step atoms temp pe ke pxx pyy v_qsum   
+dump            1 all custom 2000 dump.* id type x y z q
+fix             relax all box/relax x 1.0 y 1.0 vmax 0.001 couple xy 
+min_style       cg
+minimize        1.0e-6  1.0e-6  5000 5000                      ##  Energy minimization
+unfix           relax 
+
+
+
+
+
+
+
+
+
+
+##  ---------------------  Compute required properites and Simulation preparation  ------------------------  ##
+##  Compute stress and atomic volume 
+compute         satom all stress/atom NULL              ## The vrial stress * volume
+compute         centro all centro/atom bcc              ## centro-symmetry parameters
+compute         voro all voronoi/atom                   ## the voronoi volume of atoms
+compute         d all displace/atom                     ## displacement of each atom
+variable        s1 atom c_satom[1]/(c_voro[1]+1e-6)     ## compute the true value of atomic stress by dividing the voronoi volume.
+variable        s2 atom c_satom[2]/(c_voro[1]+1e-6)
+variable        s3 atom c_satom[3]/(c_voro[1]+1e-6)
+variable        s4 atom c_satom[4]/(c_voro[1]+1e-6)
+variable        s5 atom c_satom[5]/(c_voro[1]+1e-6)
+variable        s6 atom c_satom[6]/(c_voro[1]+1e-6)
+undump          1
+dump	        2 all custom 500 dump.* id type x y z c_d[1] c_d[2] c_d[3] c_d[4] v_s1 v_s2 v_s3 v_s4 v_s5 v_s6 fx fy fz q c_voro[1] c_centro
+
+##  Set regions of vacuum, mobile and bottom
+variable        VacXlo equal xlo+0.5
+variable        VacXhi equal xhi-0.5
+variable        VacYlo equal ylo+0.5
+variable        VacYhi equal yhi-0.5
+region          vac block  ${VacXlo} ${VacXhi} ${VacYlo} ${VacYhi} ${VacLo} ${VacHi} units box side in         ## the region for O insertion    
+region          bottom block EDGE EDGE EDGE EDGE EDGE 10 units box side in      ## the region for fixed bottom
+group           bottom region bottom
+group           Mobile subtract all bottom
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##  -----------------------  Thermal equilibration  -----------------------  ##
+timestep        1.0e-3
+velocity        all create 20 5812775 dist gaussian                                 
+fix             setting all npt temp 20 ${Temperature} $(100.0*dt) x 1.0 1.0  $(100.0*dt) y 1.0 1.0 $(100.0*dt) couple xy drag 1.0        
+run             20000			                                       				 
+unfix           setting
+fix             setting all npt temp ${Temperature} ${Temperature} $(100.0*dt) x 1.0 1.0  $(100.0*dt) y 1.0 1.0 $(100.0*dt) couple xy drag 1.0        
+run             10000			                                       				 
+unfix           setting
+
+
+velocity        bottom set 0.0 0.0 0.0 units box
+fix             freeze bottom setforce 0.0 0.0 0.0
+compute         myTemp Mobile temp
+compute_modify  myTemp dynamic/dof yes
+
+##  Setting the reflecting wall in the upper and lower boundaries in the Z axis.
+fix             wallz all wall/reflect zlo -2.5 zhi ${VacHi} units box  
+
+
+
+
+
+
+
+
+
+
+
+
+##  -------------------------  Oxidation  simulation  -----------------------  ##
+## wolf
+pair_style  	hybrid/overlay coul/CTIP 8.5 wolf 0.25 eam/alloy
+## EAM potential coeff
+pair_coeff   	* * eam/alloy HfNbZrTiTaO.eam.alloy Hf Nb Zr Ti Ta O 
+## CTIP potential coeff
+pair_coeff   	* * coul/CTIP HfNbZrTiTaO.ctip Hf Nb Zr Ti Ta O 
+##  charge equilibration
+fix             qeq all qeq/CTIP 1 8.5 1.0e-6 1000 coul/CTIP alpha 0.25
+
+
+
+
+fix             nve all nve
+fix             setting Mobile temp/rescale 10 ${Temperature} ${Temperature} 10 1
+fix_modify      setting temp myTemp
+run             1000
+
+
+reset_timestep  0
+undump          2
+dump	        3 all custom 500 dump.oxidation.* id type x y z c_d[1] c_d[2] c_d[3] c_d[4] v_s1 v_s2 v_s3 v_s4 v_s5 v_s6 fx fy fz q c_voro[1] c_centro
+
+
+
+
+##  insert initial O atoms 
+##  Using **ATOMIC** oxygen
+variable        NumO    equal round(lx*ly*(${VacHi}-${VacLo})*1e-30*${Pressure}*1e6/8.31/${Temperature}*6.02*1e23)
+molecule        1       molecule.oxygen                   
+fix             init    6 deposit ${NumO} 0 1 9876 region vac near 4 attempt 15 mol 1 units box    #  Angstroms/picosecond    
+run             50
+unfix           init
+restart         20000 restart.*
+
+
+
+
+##  Loop to oxidize the alloy 
+variable        i loop 50000
+label           loopA
+
+
+        variable  Q atom  q
+		variable  Z atom  z
+		variable  T atom  type
+        variable  C equal count(all)
+		variable  m equal count(6)
+        variable  n equal 0
+        variable  k equal 1
+		
+   
+        variable  j loop 50000
+        label     loopB
+                  variable     charge equal v_Q[v_k]
+				  variable     zcoord equal v_Z[v_k]
+				  variable     TYPE equal v_T[v_k]
+	              if           "(${charge} <= -1 && ${TYPE} == 6) || (${zcoord} <= ${AddBound} && ${TYPE} == 6)"  then  "variable n equal $n+1"
+				  variable     k equal $k+1
+	  
+        next      j 
+		if        "$k>$C" then " jump in.oxidation break"
+        jump      in.oxidation loopB
+		label     break
+		variable  j delete
+   
+
+        variable  now equal ${NumO}-(v_m/2-v_n/2) 
+		variable  new equal ${now}%1
+		
+		
+		thermo_style    custom step atoms c_myTemp pe ke pxx pyy v_n v_m v_now v_qsum
+		  
+		  
+		  
+		if        "(${now} > 0) && (${new}==0)" then &
+		"fix      insert 6 deposit ${now} 0 1 258369 region vac near 4 attempt 15 mol 1 units box" &  
+		"run      10" &
+		"unfix    insert"  &
+		else &
+		"run      10"
+		
+
+next            i   
+jump            in.oxidation loopA
+
+
+
