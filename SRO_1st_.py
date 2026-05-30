@@ -7,14 +7,8 @@ comm_rank = comm.Get_rank()
 comm_size = comm.Get_size()
 
 
-# =========================================================================
-#  ONLY EDIT THIS BLOCK TO STUDY A DIFFERENT SYSTEM
-# -------------------------------------------------------------------------
-#  ElemNames: element symbols ordered by LAMMPS atom type (type 1, 2, 3, ...)
-#             e.g. for a Mo-Nb-Ta-W system use ["Mo", "Nb", "Ta", "W"]
-#  STR      : crystal structure, "BCC" (CN=8) or "FCC" (CN=12)
-# =========================================================================
-ElemNames = ["W", 'Ta', 'Cr', 'V']
+
+ElemNames = ["Hf", 'Nb', 'Zr', 'Ti', 'Ta']
 STR       = "BCC"
 fnformer  = "dump."
 fnlatter  = "300000"
@@ -52,12 +46,7 @@ def Ranking(A):
 # ====================  Per-element SRO calculation  =====================
 def calc_sro_for_element(CurrentType, list_temp, AtomList, Num, box,
                          CoordNum, AtomType, DisLimit, comm):
-    """Compute Warren-Cowley SRO parameters for one element type.
-
-    Returns the alpha vector (length AtomType) on rank 0, None elsewhere.
-    Generalized over an arbitrary number of element types: per-type
-    neighbour counts are accumulated in the array P[AtomType].
-    """
+    
     comm_rank = comm.Get_rank()
     comm_size = comm.Get_size()
     xlo, xhi, ylo, yhi, zlo, zhi = box
